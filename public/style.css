@@ -47,16 +47,17 @@ body::before {
   z-index              : -9999;
   content              : "";
   position             : fixed;
-  top                  : 0;
-  left                 : 0;
-  width                : 100%;
-  height               : 100%;
+  top                  : -200%;
+  left                 : -200%;
+  width                : 500%;
+  height               : 500%;
   background-attachment: fixed;
   background-image     : none;
   background-position  :
     0px 0px,
     108px 36px;
   background-size: 94px;
+  transform      : rotate(0deg);
 }
 
 [bg-style='normal'],
@@ -70,21 +71,27 @@ body::before {
   }
 }
 
+body::before {
+  --bg-slide-time: 2.67s;
+  --bg-twist-time: 60000s;
+  --bg-twist-max : 0deg;
+}
+
 [bg-style='normal'] {
   body::before {
-    animation: 2.67s linear infinite bg-slide;
+    --bg-slide-time: 2.67s
   }
 }
 
 [bg-style='slow'] {
   body::before {
-    animation: 5.33s linear infinite bg-slide;
+    --bg-slide-time: 5.33s
   }
 }
 
 [bg-style='veryslow'] {
   body::before {
-    animation: 10.67s linear infinite bg-slide;
+    --bg-slide-time: 10.67s
   }
 }
 
@@ -99,6 +106,32 @@ body::before {
     background-position:
       -186px -186px,
       165px 93px;
+  }
+}
+
+[bg-twist='true'] {
+  body::before {
+    --bg-twist-max: 360deg;
+  }
+}
+
+@keyframes bg-twist {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(var(--bg-twist-max));
+  }
+}
+
+body::before {
+  animation: var(--bg-slide-time) linear infinite bg-slide, var(--bg-twist-time) linear infinite bg-twist;
+}
+
+[bg-style='static'] {
+  body::before {
+    animation: var(--bg-twist-time) linear infinite bg-twist;
   }
 }
 
@@ -830,6 +863,54 @@ textarea {
   display: none;
 }
 
+.guess-icon:has(>.trombone) {
+  position: relative;
+}
+
+.anim-spritesheet {
+  --anim-frames    : 1;
+  --anim-frame-time: 0.1s;
+  --anim-iters     : 1;
+  --sprite-width   : 1px;
+  --sprite-height  : 1px;
+
+  position : absolute;
+  z-index  : 5;
+  transform: translate(0px, 0px);
+  width    : var(--sprite-width);
+  height   : var(--sprite-height);
+
+  pointer-events: none;
+
+  background-image    : url('');
+  animation           : spritesheet-anim calc(var(--anim-frames) * var(--anim-frame-time)) steps(var(--anim-frames)) var(--anim-iters);
+  animation-play-state: paused;
+}
+
+@keyframes spritesheet-anim {
+  0% {
+    background-position: 0px;
+  }
+
+  100% {
+    background-position: calc(-1 * var(--sprite-width) * var(--anim-frames));
+  }
+}
+
+.anim-spritesheet.trombone {
+  --anim-frames    : 2;
+  --anim-frame-time: 0.25s;
+  --anim-iters     : 2.5;
+  --sprite-width   : 37px;
+  --sprite-height  : 30px;
+
+  left  : 64px;
+  bottom: 36px;
+  scale : 400%;
+
+  background-image: url('img/sans-trombone-spritesheet.png');
+}
+
 #game-cards-panel {
   max-width      : 1040px;
   flex           : 1 0 auto;
@@ -1034,10 +1115,37 @@ textarea {
   filter: brightness(0.1) saturate(0);
 }
 
+.inactive.goner .character-img-frame {
+  filter: brightness(0.3) saturate(0);
+}
+
 .inactive .character-img-frame:hover,
 .inactive .character-img-frame:focus-visible,
 .inactive .character-name-popup {
   filter: brightness(0.3);
+}
+
+.inactive.goner .character-img-frame:hover,
+.inactive.goner .character-img-frame:focus-visible,
+.inactive.goner .character-name-popup {
+  filter: brightness(0.5) saturate(0);
+}
+
+.inactive.goner .character-name::before {
+  content: "Goner ";
+}
+
+.anim-spritesheet.explosion {
+  --anim-frames    : 17;
+  --anim-frame-time: 0.05s;
+  --anim-iters     : 1;
+  --sprite-width   : 65px;
+  --sprite-height  : 100px;
+
+  transform: translate(6px, 7px);
+  scale    : calc(100% * var(--card-scale));
+
+  background-image: url('img/realistic-explosion-spritesheet.png');
 }
 
 #card-panel-buttons {
@@ -1137,6 +1245,16 @@ input.focusable:hover {
   left    : 0;
   top     : calc(0.5rem - 4px - 0.5 * var(--card-img-height));
   z-index : -1;
+}
+
+#fun-button-container {
+  display        : flex;
+  align-items    : center;
+  justify-content: center;
+}
+
+#fun-adjust-button {
+  margin: 0;
 }
 
 /* Credits scene */
