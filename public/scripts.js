@@ -1,7 +1,8 @@
 // Globally relevant
 // =================
 
-import { connectFunButton, setNewFunValue, updateNoFun, attachAllHeartEvents, attachAllCardEvents } from "./fun.js";
+import { audioEnabled, playDamageSound, playMoveMenuSound, playSelectSound, preloadStandardAudio } from "./audio.js";
+import { connectFunButton, setNewFunValue, updateNoFun, attachAllHeartEvents, attachAllCardEvents, suppressDamageSound } from "./fun.js";
 
 // Class definitions
 // -----------------
@@ -262,7 +263,7 @@ function cleanSceneStack() {
  * Switch to target scene
  * @param {Element | null} newScene The scene to switch to. If null, will switch to the previous scene
  */
-function switchScene(newScene = null) {
+function switchScene(newScene = null, sound = true) {
 
   // Check for scene switch lock so we don't overlap scene switches
   if (sceneSwitching)
@@ -286,6 +287,9 @@ function switchScene(newScene = null) {
     return;
   }
 
+  if (sound)
+    playSelectSound();
+
   // Adjust the scene stack as appropriate for this change
 
   if (!lSceneStack.includes(newScene)) {
@@ -304,6 +308,18 @@ function switchScene(newScene = null) {
   // Flag that a scene switch is in progress so user actions don't trigger an overlapping switch in the next bit of time
   sceneSwitching = true;
   setTimeout(() => sceneSwitching = false, 250);
+}
+
+/**
+ * Move the focused element in the scene (e.g. after a keyboard arrow key event)
+ * @param {HTMLElement} el 
+ * @param {Boolean} sound Whether or not the "movemenu" sound should be played
+ * @param {Boolean} focusVisible Whether or not the focus should be visible
+ */
+function moveFocusElement(el, sound = true, focusVisible = true) {
+  el.focus({ focusVisible: focusVisible });
+  if (sound)
+    playMoveMenuSound();
 }
 
 /**
@@ -337,12 +353,16 @@ async function loadJSON(url) {
  * Cycles through the selected option of a "select" element
  * @param {Element} selectEl 
  */
-function cycleSelect(selectEl) {
+function cycleSelect(selectEl, sound = true) {
+
   // Check this is indeed a select element
   if (selectEl.tagName !== "SELECT") {
     console.error("cycleSelect called on element not of 'select' type: " + selectEl);
     return;
   }
+
+  if (sound)
+    playSelectSound();
 
   // Find the selected option, then select the next one
   const lOptions = selectEl.querySelectorAll("option");
@@ -435,7 +455,7 @@ let naughtyPlayer = false;
 function initNameScene() {
   if (!naughtyPlayer) {
     NAME_INPUT.removeAttribute("disabled");
-    setTimeout(() => NAME_INPUT.focus({ focusVisible: true }), 100);
+    setTimeout(() => moveFocusElement(NAME_INPUT, false), 100);
   }
   NAME_SCENE_HEADER.scrollIntoView();
   window.addEventListener("keydown", navigateName);
@@ -498,35 +518,46 @@ function getName() {
 }
 
 /**
- * Called when the user submits their name either through the button or enter/return
+ * Called on keydown in the name box - plays keyboard sound and checks if name should be submitted
  * @param {Event} e 
  */
 function submitName(e) {
   // If this is a keydown event, check if the key is Enter before triggering
-  if (e.type === "keydown" && e.key !== "Enter")
+  if (e && e.type === "keydown" && e.key != "Enter") {
+    playMoveMenuSound(0.25);
     return;
+  }
   setName(NAME_INPUT.value);
   switchScene();
   e.stopPropagation();
 }
 
 /**
- * Monitor the name for any naughty users
- * @param {Event} e 
+ * Punish the player for being naughty
  */
-function monitorName(e) {
+function jerrify() {
+  NAME_INPUT.value = "Jerry";
+  naughtyPlayer = true;
+  submitName();
+}
+
+/**
+ * Monitor the name for changes
+ */
+function monitorName() {
   const nameLower = NAME_INPUT.value.toLowerCase().replaceAll(/\W/g, "");
-  if (nameLower.includes("gaster") || nameLower.includes("wdg")) {
-    NAME_INPUT.value = "Jerry";
-    naughtyPlayer = true;
-    submitName(e);
-  }
+  if (nameLower.includes("gaster") || nameLower.includes("wdg"))
+    jerrify();
 }
 
 /**
  * Sync the Remember Name and Remember Settings checkboxes
+ * @param {Event} e 
  */
-function updateRememberName() {
+function updateRememberName(e = null) {
+  // Play a sound if this was event-triggered, and not called directly
+  if (e)
+    playSelectSound();
   SETTINGS_REMEMBER_BOX.checked = NAME_REMEMBER_BOX.checked;
 }
 
@@ -536,7 +567,8 @@ function updateRememberName() {
  * @param {KeyboardEvent} e 
  */
 function navigateName(e) {
-  let currentIndex = L_NAME_OPTIONS.findIndex((el) => document.activeElement === el);
+  const initIndex = L_NAME_OPTIONS.findIndex((el) => document.activeElement === el);
+  let currentIndex = initIndex;
 
   // Check the direction of navigation
   let dir;
@@ -583,7 +615,7 @@ function navigateName(e) {
 
   if (currentIndex == -1) {
     // Not in the options currently, so go to the first
-    L_NAME_OPTIONS[0].focus({ focusVisible: true });
+    moveFocusElement(L_NAME_OPTIONS[0]);
     return;
   }
 
@@ -595,7 +627,8 @@ function navigateName(e) {
   else if (currentIndex >= L_NAME_OPTIONS.length) {
     currentIndex = 0;
   }
-  L_NAME_OPTIONS[currentIndex].focus({ focusVisible: true });
+  // Move the focus, playing sound unless the position hasn't changed
+  moveFocusElement(L_NAME_OPTIONS[currentIndex], initIndex != currentIndex);
 
 }
 
@@ -637,7 +670,7 @@ const L_MENU_OPTIONS = [...L_MENU_MAIN_OPTIONS, ...L_MENU_CONFIG_OPTIONS];
 const CHARSET_OPTION_TEMPLATE = document.getElementById("charset-option-template");
 
 // Globals
-const s_preloaded_images = new Set();
+const sPreloadedImages = new Set();
 
 // Functions
 // ---------
@@ -646,7 +679,7 @@ function initMenuScene() {
   window.addEventListener("keydown", navigateMenu);
   window.addEventListener("resize", fixMenuTabIndex);
   fixMenuTabIndex();
-  MENU_START_LINK.focus({ focusVisible: true });
+  moveFocusElement(MENU_START_LINK, false);
 }
 
 function exitMenuScene() {
@@ -660,12 +693,13 @@ function exitMenuScene() {
  */
 async function preloadImage(url) {
   // Check if the image has already been preloaded
-  if (s_preloaded_images.has(url))
+  if (sPreloadedImages.has(url))
     return;
-  s_preloaded_images.add(url);
+  sPreloadedImages.add(url);
 
   const img = new Image();
   img.src = url;
+  sPreloadedImages.add(img);
 }
 
 /** 
@@ -732,6 +766,11 @@ function loadGuessIcons() {
 
   // Attach any heart events triggered through FUN events
   attachAllHeartEvents();
+}
+
+function restartGame() {
+  playSelectSound();
+  startGame();
 }
 
 async function startGame() {
@@ -818,7 +857,8 @@ async function startGame() {
  * @param {KeyboardEvent} e 
  */
 function navigateMenu(e) {
-  let currentIndex = L_MENU_OPTIONS.findIndex((el) => document.activeElement === el);
+  const initIndex = L_MENU_OPTIONS.findIndex((el) => document.activeElement === el);
+  let currentIndex = initIndex;
 
   // Check the direction of navigation
   let dir;
@@ -865,7 +905,7 @@ function navigateMenu(e) {
 
   if (currentIndex == -1) {
     // Not in the options currently, so go to the first
-    L_MENU_OPTIONS[0].focus({ focusVisible: true });
+    moveFocusElement(L_MENU_OPTIONS[0]);
     return;
   }
 
@@ -902,7 +942,8 @@ function navigateMenu(e) {
     }
   }
 
-  L_MENU_OPTIONS[currentIndex].focus({ focusVisible: true });
+  // Move the focus, playing sound unless the position hasn't changed
+  moveFocusElement(L_MENU_OPTIONS[currentIndex], initIndex != currentIndex);
 }
 
 async function loadCharacterSetList() {
@@ -1023,11 +1064,12 @@ const CARD_GRID = document.getElementById("card-grid");
 // Default configuration values
 const BODY_STYLE = window.getComputedStyle(document.body);
 const DEFAULT_LOOKUP_URL = "https://www.google.com/search?q=Undertale%20Deltarune%20%s&udm=14";
+const DEFAULT_MUTE_SOUND = document.getElementById("mute-sound-box").checked;
 const DEFAULT_NUM_GUESSES = document.querySelectorAll(".guess-icon").length;
 const DEFAULT_CARD_SCALE = +BODY_STYLE.getPropertyValue('--card-scale');
 const DEFAULT_BG_STYLE = document.getElementById("bg-style-select").value;
 const DEFAULT_BG_FLAVOR = document.getElementById("bg-flavor-select").value;
-const DEFAULT_NO_FUN = document.getElementById("no-fun").checked;
+const DEFAULT_NO_FUN = document.getElementById("no-fun-box").checked;
 const DEFAULT_CARD_WIDTH = parseInt(BODY_STYLE.getPropertyValue('--card-base-img-width')) * DEFAULT_CARD_SCALE;
 const DEFAULT_CARD_HEIGHT = parseInt(BODY_STYLE.getPropertyValue('--card-base-img-height')) * DEFAULT_CARD_SCALE;
 const DEFAULT_CARD_CSS_CLASS = "";
@@ -1124,6 +1166,7 @@ function keyLookupModeEnabled() {
  * Start lookup mode
  */
 function startLookupMode(e) {
+  playSelectSound();
   // If this gets triggered when we're already in lookup mode, end it
   if (lookupModeEnabled()) {
     setOffLookupMode();
@@ -1135,7 +1178,7 @@ function startLookupMode(e) {
   else {
     setKeyLookupMode();
     // If starting in key mode, move focus to the first character card
-    lCharacterCardFrames[0].focus({ focusVisible: true });
+    moveFocusElement(lCharacterCardFrames[0], false);
   }
 
   // Prepare an event to look up the target
@@ -1205,6 +1248,7 @@ function updateLookupCursorPosition() {
  * Open the notes dialog
  */
 function openNotes() {
+  playSelectSound();
   GAME_NOTES_DIALOG.showModal();
 }
 
@@ -1212,6 +1256,7 @@ function openNotes() {
  * Close the notes dialog
  */
 function closeNotes() {
+  playSelectSound();
   GAME_NOTES_DIALOG.close();
 }
 
@@ -1532,9 +1577,12 @@ function flipGuess(e) {
   const guessClassList = e.currentTarget.closest(".guess-icon").classList;
 
   if (guessClassList.contains("active")) {
+    if (!suppressDamageSound)
+      playDamageSound();
     guessClassList.remove("active");
     guessClassList.add("inactive");
   } else {
+    playSelectSound();
     guessClassList.add("active");
     guessClassList.remove("inactive");
   }
@@ -1547,6 +1595,8 @@ function flipGuess(e) {
  * @param {Event} e 
  */
 function flipCard(e) {
+
+  playSelectSound();
 
   // Don't flip if we're in lookup mode
   if (lookupModeEnabled())
@@ -1574,6 +1624,10 @@ function flipCard(e) {
  */
 function markCard(e) {
   e.preventDefault();
+
+  // Play the select sound unless this was triggered by a double-click event (which would have already triggered it)
+  if (e.type != "dblclick")
+    playSelectSound();
 
   const cardClassList = e.currentTarget.closest(".character-card").classList;
 
@@ -1763,7 +1817,8 @@ function arrangeGameFocusableItems() {
  */
 function navigateGame(e) {
   // Get current position
-  let currentIndex = lGameFocusableItems.findIndex((el) => document.activeElement === el);
+  const initIndex = lGameFocusableItems.findIndex((el) => document.activeElement === el);
+  let currentIndex = initIndex;
 
   const numButtonsBeforePlayArea = lGameButtonsBeforePlayArea.length;
   const numGuessIcons = lGuessIcons.length;
@@ -1852,8 +1907,10 @@ function navigateGame(e) {
         return;
       }
 
-      if (GAME_NOTES_DIALOG.hasAttribute("open"))
+      if (GAME_NOTES_DIALOG.hasAttribute("open")) {
+        playSelectSound();
         return;
+      }
       e.stopPropagation();
       e.preventDefault();
       openNotes();
@@ -1892,7 +1949,7 @@ function navigateGame(e) {
 
   if (currentIndex == -1) {
     // Not in the options currently, so go to the first character card
-    lCharacterCardFrames[0].focus({ focusVisible: true });
+    moveFocusElement(lCharacterCardFrames[0]);
     if (keyLookupModeEnabled())
       updateLookupCursorPosition();
     return;
@@ -1950,7 +2007,8 @@ function navigateGame(e) {
   else if (currentIndex >= numFocusable)
     currentIndex = numFocusable - 1;
 
-  lGameFocusableItems[currentIndex].focus({ focusVisible: true });
+  // Move the focus, playing sound unless the position hasn't changed
+  moveFocusElement(lGameFocusableItems[currentIndex], initIndex != currentIndex);
 
   if (keyLookupModeEnabled())
     updateLookupCursorPosition();
@@ -1960,7 +2018,7 @@ function navigateGame(e) {
 // -----
 
 QUIT_GAME_BUTTON.addEventListener("click", () => switchScene(MENU_SCENE));
-RESTART_GAME_BUTTON.addEventListener("click", startGame);
+RESTART_GAME_BUTTON.addEventListener("click", restartGame);
 
 L_LOOKUP_BUTTONS.forEach((el) => el.addEventListener("click", startLookupMode, false));
 
@@ -1990,7 +2048,7 @@ const INSTRUCTIONS_BACK_BUTTON = document.getElementById("instructions-back");
 // ---------
 
 function initInstructionsScene() {
-  INSTRUCTIONS_BACK_BUTTON.focus({ focusVisible: true });
+  moveFocusElement(INSTRUCTIONS_BACK_BUTTON, false);
   INSTRUCTIONS_SCENE_HEADER.scrollIntoView();
   window.addEventListener("keydown", navigateTextScenes);
 }
@@ -2021,7 +2079,7 @@ const CONTROLS_BACK_BUTTON = document.getElementById("controls-back");
 // ---------
 
 function initControlsScene() {
-  CONTROLS_BACK_BUTTON.focus({ focusVisible: true });
+  moveFocusElement(CONTROLS_BACK_BUTTON, false);
   CONTROLS_SCENE_HEADER.scrollIntoView();
   window.addEventListener("keydown", navigateTextScenes);
 }
@@ -2047,6 +2105,8 @@ const controlsSceneSwitchWatcher = new SceneSwitchWatcher(CONTROLS_SCENE, initCo
 const SETTINGS_SCENE_HEADER = document.getElementById("settings-scene");
 
 const SETTINGS_NAME_LINK = document.getElementById("settings-edit-name");
+const SETTINGS_MUTE_SOUND_LABEL = document.getElementById("mute-sound-label");
+const SETTINGS_MUTE_SOUND_BOX = document.getElementById("mute-sound-box");
 const SETTINGS_GUESS_LABEL = document.getElementById("num-guesses-label");
 const SETTINGS_GUESS_SELECT = document.getElementById("num-guesses-select");
 const SETTINGS_SCALE_LABEL = document.getElementById("card-scale-label");
@@ -2058,7 +2118,7 @@ const SETTINGS_BG_STYLE_LABEL = document.getElementById("bg-style-label");
 const SETTINGS_BG_STYLE_SELECT = document.getElementById("bg-style-select");
 const SETTINGS_FUN_BUTTON = document.getElementById("fun-adjust-button");
 const SETTINGS_NO_FUN_LABEL = document.getElementById("no-fun-label");
-const SETTINGS_NO_FUN_BOX = document.getElementById("no-fun");
+const SETTINGS_NO_FUN_BOX = document.getElementById("no-fun-box");
 const SETTINGS_REMEMBER_LABEL = document.getElementById("remember-settings-label");
 const SETTINGS_REMEMBER_BOX = document.getElementById("remember-settings");
 
@@ -2066,26 +2126,26 @@ const SETTINGS_RESTORE_DEFAULT_BUTTON = document.getElementById("settings-restor
 const SETTINGS_RESTORE_INIT_BUTTON = document.getElementById("settings-restore-init");
 const SETTINGS_BACK_BUTTON = document.getElementById("settings-back");
 
-const L_SETTINGS_OPTIONS = [SETTINGS_NAME_LINK, SETTINGS_GUESS_LABEL, SETTINGS_SCALE_LABEL, SETTINGS_BG_FLAVOR_LABEL,
-  SETTINGS_BG_STYLE_LABEL, SETTINGS_FUN_BUTTON, SETTINGS_NO_FUN_LABEL, SETTINGS_REMEMBER_LABEL,
-  SETTINGS_RESTORE_DEFAULT_BUTTON, SETTINGS_RESTORE_INIT_BUTTON, SETTINGS_BACK_BUTTON];
+const L_SETTINGS_OPTIONS = [SETTINGS_NAME_LINK, SETTINGS_MUTE_SOUND_LABEL, SETTINGS_GUESS_LABEL, SETTINGS_SCALE_LABEL,
+  SETTINGS_BG_FLAVOR_LABEL, SETTINGS_BG_STYLE_LABEL, SETTINGS_FUN_BUTTON, SETTINGS_NO_FUN_LABEL,
+  SETTINGS_REMEMBER_LABEL, SETTINGS_RESTORE_DEFAULT_BUTTON, SETTINGS_RESTORE_INIT_BUTTON, SETTINGS_BACK_BUTTON];
 
 const SETTINGS_EXAMPLE_CARD = document.getElementById("example-character-card");
 
 // Other constants
-const L_SETTING_NAMES = ["numGuesses", "cardScale", "bgFlavor", "bgStyle", "noFun"];
-const L_SETTING_SOURCES = [SETTINGS_GUESS_SELECT, SETTINGS_SCALE_SELECT, SETTINGS_BG_FLAVOR_SELECT,
-  SETTINGS_BG_STYLE_SELECT, SETTINGS_NO_FUN_BOX];
-const L_SETTINGS_DEFAULTS = [DEFAULT_NUM_GUESSES, DEFAULT_CARD_SCALE, DEFAULT_BG_FLAVOR, DEFAULT_BG_STYLE,
-  DEFAULT_NO_FUN];
-const L_SETTINGS_ON_UPDATE = [() => 0, () => 0, () => 0, () => 0, () => 0,];
+const L_SETTING_NAMES = ["muteSound", "numGuesses", "cardScale", "bgFlavor", "bgStyle", "noFun"];
+const L_SETTING_SOURCES = [SETTINGS_MUTE_SOUND_BOX, SETTINGS_GUESS_SELECT, SETTINGS_SCALE_SELECT,
+  SETTINGS_BG_FLAVOR_SELECT, SETTINGS_BG_STYLE_SELECT, SETTINGS_NO_FUN_BOX];
+const L_SETTINGS_DEFAULTS = [DEFAULT_MUTE_SOUND, DEFAULT_NUM_GUESSES, DEFAULT_CARD_SCALE, DEFAULT_BG_FLAVOR,
+  DEFAULT_BG_STYLE, DEFAULT_NO_FUN];
+const L_SETTINGS_ON_UPDATE = [() => 0, () => 0, () => 0, () => 0, () => 0, () => 0,];
 
 
 // Functions
 // ---------
 
 function initSettingsScene() {
-  SETTINGS_NAME_LINK.focus({ focusVisible: true });
+  moveFocusElement(SETTINGS_NAME_LINK, false);
   SETTINGS_SCENE_HEADER.scrollIntoView();
   window.addEventListener("keydown", navigateSettings);
 }
@@ -2137,14 +2197,21 @@ function updateBgFlavor() {
 }
 L_SETTINGS_ON_UPDATE[L_SETTING_NAMES.indexOf("bgFlavor")] = updateBgFlavor;
 
+function updateNoFunBox() {
+  updateNoFun();
+}
+L_SETTINGS_ON_UPDATE[L_SETTING_NAMES.indexOf("noFun")] = updateNoFunBox;
+
 /**
  * Sync the Remember Name and Remember Settings checkboxes
  */
 function updateRememberSettings() {
+  playSelectSound();
   NAME_REMEMBER_BOX.checked = SETTINGS_REMEMBER_BOX.checked;
 }
 
 function restoreDefaultSettings() {
+  playSelectSound();
   for (let i = 0; i < L_SETTING_NAMES.length; ++i) {
     setSettingValue(L_SETTING_SOURCES[i], L_SETTINGS_DEFAULTS[i]);
     L_SETTINGS_ON_UPDATE[i]();
@@ -2152,6 +2219,7 @@ function restoreDefaultSettings() {
 }
 
 function restoreInitSettings() {
+  playSelectSound();
   for (let i = 0; i < L_SETTING_NAMES.length; ++i) {
     if (Object.keys(initSettings).includes(L_SETTING_NAMES[i])) {
       setSettingValue(L_SETTING_SOURCES[i], initSettings[L_SETTING_NAMES[i]]);
@@ -2165,7 +2233,8 @@ function restoreInitSettings() {
  * @param {KeyboardEvent} e 
  */
 function navigateSettings(e) {
-  let currentIndex = L_SETTINGS_OPTIONS.findIndex((el) => document.activeElement === el);
+  const initIndex = L_SETTINGS_OPTIONS.findIndex((el) => document.activeElement === el);
+  let currentIndex = initIndex;
 
   // Check the direction of navigation
   let dir;
@@ -2185,6 +2254,9 @@ function navigateSettings(e) {
       dir = -1;
       break;
 
+    case "Escape":
+      SETTINGS_BACK_BUTTON.click();
+
     case " ":
     case "z":
     case "Enter":
@@ -2193,7 +2265,10 @@ function navigateSettings(e) {
       e.stopPropagation();
       e.preventDefault();
       const el = document.activeElement;
-      if (el == SETTINGS_GUESS_LABEL) {
+      if (el == SETTINGS_MUTE_SOUND_LABEL) {
+        toggleInput(SETTINGS_MUTE_SOUND_BOX);
+        playSelectSound();
+      } else if (el == SETTINGS_GUESS_LABEL) {
         cycleSelect(SETTINGS_GUESS_SELECT);
       } else if (el == SETTINGS_SCALE_LABEL) {
         cycleSelect(SETTINGS_SCALE_SELECT);
@@ -2206,7 +2281,8 @@ function navigateSettings(e) {
         updateBgStyle();
       } else if (el == SETTINGS_NO_FUN_LABEL) {
         toggleInput(SETTINGS_NO_FUN_BOX);
-        updateNoFun();
+        playSelectSound();
+        updateNoFunBox();
       } else if (el == SETTINGS_REMEMBER_LABEL) {
         toggleInput(SETTINGS_REMEMBER_BOX);
         updateRememberSettings();
@@ -2221,7 +2297,7 @@ function navigateSettings(e) {
 
   if (currentIndex == -1) {
     // Not in the options currently, so go to the first
-    L_SETTINGS_OPTIONS[0].focus({ focusVisible: true });
+    moveFocusElement(L_SETTINGS_OPTIONS[0]);
     return;
   }
 
@@ -2233,7 +2309,9 @@ function navigateSettings(e) {
   else if (currentIndex >= L_SETTINGS_OPTIONS.length) {
     currentIndex = L_SETTINGS_OPTIONS.length - 1;
   }
-  L_SETTINGS_OPTIONS[currentIndex].focus({ focusVisible: true });
+
+  // Move the focus, playing sound unless the position hasn't changed
+  moveFocusElement(L_SETTINGS_OPTIONS[currentIndex], initIndex != currentIndex);
 
 }
 
@@ -2243,11 +2321,13 @@ function navigateSettings(e) {
 SETTINGS_NAME_LINK.addEventListener("click", () => switchScene(NAME_SCENE));
 
 for (let i = 0; i < L_SETTING_NAMES.length; ++i) {
-  L_SETTING_SOURCES[i].addEventListener("change", L_SETTINGS_ON_UPDATE[i]);
+  L_SETTING_SOURCES[i].addEventListener("change", () => {
+    playSelectSound();
+    L_SETTINGS_ON_UPDATE[i]();
+  });
 }
 
 connectFunButton();
-SETTINGS_NO_FUN_BOX.addEventListener("change", updateNoFun);
 SETTINGS_REMEMBER_BOX.addEventListener("change", updateRememberSettings);
 
 SETTINGS_RESTORE_DEFAULT_BUTTON.addEventListener("click", restoreDefaultSettings);
@@ -2271,7 +2351,7 @@ const CREDITS_BACK_BUTTON = document.getElementById("credits-back");
 // ---------
 
 function initCreditsScene() {
-  CREDITS_BACK_BUTTON.focus({ focusVisible: true });
+  moveFocusElement(CREDITS_BACK_BUTTON, false);
   CREDITS_SCENE_HEADER.scrollIntoView();
   window.addEventListener("keydown", navigateTextScenes);
 }
@@ -2312,18 +2392,21 @@ document.addEventListener("DOMContentLoaded", () => {
     MENU_START_LINK.classList.remove("hidden");
     document.querySelectorAll(".game-loading-message").forEach(el => el.classList.add("hidden"));
     if (!MENU_SCENE.classList.contains("hidden"))
-      MENU_START_LINK.focus({ focusVisible: true });
+      moveFocusElement(MENU_START_LINK, false);
   });
 
   if (initSettings.name) {
     setName(initSettings.name);
     MENU_SCENE.classList.remove("hidden");
   } else {
-    switchScene(NAME_SCENE);
-    NAME_INPUT.focus({ focusVisible: true });
+    switchScene(NAME_SCENE, false);
+    moveFocusElement(NAME_INPUT, false);
   }
 
   updateRememberName();
+
+  if (audioEnabled())
+    preloadStandardAudio();
 
   setNewFunValue();
 });

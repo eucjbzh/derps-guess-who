@@ -899,7 +899,7 @@ textarea {
 
 .anim-spritesheet.trombone {
   --anim-frames    : 2;
-  --anim-frame-time: 0.25s;
+  --anim-frame-time: 0.45s;
   --anim-iters     : 2.5;
   --sprite-width   : 37px;
   --sprite-height  : 30px;
@@ -1195,7 +1195,7 @@ textarea {
 #settings-grid {
   display              : grid;
   grid-template-columns: 8rem 2.5rem 4rem;
-  row-gap              : 1rem;
+  row-gap              : 0.75rem;
   column-gap           : min(1rem, 2.5vw);
 }
 

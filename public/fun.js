@@ -1,6 +1,8 @@
 // Code for handling FUN events in the game
 // ========================================
 
+import { playExplosionSound, playSelectSound, playTromboneSound, preloadAudio, unloadAudio } from "./audio.js";
+
 // Globals
 // -------
 
@@ -10,7 +12,7 @@ const FORCE_FUN = null;
 // Constant DOM references
 const SETTINGS_FUN_BUTTON = document.getElementById("fun-adjust-button");
 const SETTINGS_FUN_FORCE_INPUT = document.getElementById("fun-force-input");
-const SETTINGS_NO_FUN_BOX = document.getElementById("no-fun");
+const SETTINGS_NO_FUN_BOX = document.getElementById("no-fun-box");
 const TROMBONE_GIF_TEMPLATE = document.getElementById("trombone-template");
 const EXPLOSION_GIF_TEMPLATE = document.getElementById("explosion-template");
 
@@ -310,12 +312,17 @@ class FunEvent {
 
 // Functions related to FUN events
 
+function setNewFunFromButton() {
+  playSelectSound();
+  setNewFunValue();
+}
+
 export function connectFunButton() {
-  SETTINGS_FUN_BUTTON.addEventListener("click", setNewFunValue);
+  SETTINGS_FUN_BUTTON.addEventListener("click", setNewFunFromButton);
 }
 
 export function disconnectFunButton() {
-  SETTINGS_FUN_BUTTON.removeEventListener("click", setNewFunValue);
+  SETTINGS_FUN_BUTTON.removeEventListener("click", setNewFunFromButton);
 }
 
 // Classes implementing specific FUN events
@@ -488,27 +495,27 @@ manager.registerEvent(new TwistEvent());
  * @param {String} selector 
  * @param {String} parentSelector 
  * @param {Function} condition 
- * @returns 
+ * @returns {Boolean} Whether or not the animation ended up playing
  */
 function displayAnim(e, chance, template, selector, parentSelector, condition) {
 
   if (Math.random() > chance)
-    return;
+    return false;
 
   const el = e.target;
 
   // Only run if an active icon was clicked
   if (!condition(el))
-    return;
+    return false;
 
-  const guessIcon = el.closest(parentSelector);
+  const parentEl = el.closest(parentSelector);
 
-  // Don't run if the icon already has an active gif
-  if (guessIcon.querySelectorAll(selector).length > 0)
-    return;
+  // Don't run if the icon already has an active animation
+  if (parentEl.querySelectorAll(selector).length > 0)
+    return false;
 
   const newGif = document.importNode(template.content, true).querySelector(selector);
-  guessIcon.appendChild(newGif);
+  parentEl.appendChild(newGif);
 
   const gifStyle = window.getComputedStyle(newGif);
   const animFrames = parseInt(gifStyle.getPropertyValue("--anim-frames"));
@@ -523,21 +530,30 @@ function displayAnim(e, chance, template, selector, parentSelector, condition) {
     newGif.style.animation = null;
     newGif.remove();
   }, animFrames * animFrameTime * animIters - 10);
+
+  return true;
 }
 
 /**
  * Displays a trombone gif attached to the calling heart icon
  * @param {Event} e 
  */
-export function displayTromboneAnim(e) {
-  displayAnim(e, 1, TROMBONE_GIF_TEMPLATE, ".trombone", ".guess-icon",
-    (el) => {
-      return (el.closest(".guess-icon").classList.contains("active"));
-    }
-  )
+async function displayTromboneAnim(e) {
+
+  // Tiny delay before starting to ensure the event to toggle the heart state always goes first
+  await new Promise((resolve) => { setTimeout(resolve, 1) });
+
+  const condition = (el) => el.closest(".guess-icon").classList.contains("inactive");
+
+  if (displayAnim(e, 1, TROMBONE_GIF_TEMPLATE, ".trombone", ".guess-icon", condition))
+    playTromboneSound();
 }
 
+export let suppressDamageSound = false;
+
 class TromboneEvent extends FunEvent {
+
+  #preloadedGif;
 
   isActiveForFun(i) {
     return i >= 80 && i <= 89;
@@ -550,12 +566,17 @@ class TromboneEvent extends FunEvent {
       handler: displayTromboneAnim
     });
 
-    // Preload the image so it will appear quickly the first time it's triggered
-    document.importNode(TROMBONE_GIF_TEMPLATE.content, true).querySelector(".trombone");
+    // Preload the image and audio so they will appear quickly the first time it's triggered
+    this.#preloadedGif = document.importNode(TROMBONE_GIF_TEMPLATE.content, true).querySelector(".trombone");
+    preloadAudio("trombone");
+    suppressDamageSound = true;
   }
 
   onDeactivate() {
     manager.removeHeartEvent("trombone");
+    this.#preloadedGif = null;
+    unloadAudio("trombone");
+    suppressDamageSound = false;
   }
 }
 
@@ -565,15 +586,20 @@ manager.registerEvent(new TromboneEvent());
  * Displays a explosion gif attached to the calling card
  * @param {Event} e 
  */
-function displayExplosionAnim(e) {
-  displayAnim(e, 1, EXPLOSION_GIF_TEMPLATE, ".explosion", ".character-card",
-    (el) => {
-      return (el.closest(".character-card").classList.contains("inactive"));
-    }
-  )
+async function displayExplosionAnim(e) {
+
+  // Tiny delay before starting to ensure the event to toggle the card state always goes first
+  await new Promise((resolve) => { setTimeout(resolve, 1) });
+
+  const condition = (el) => el.closest(".character-card").classList.contains("inactive");
+
+  if (displayAnim(e, 0.1, EXPLOSION_GIF_TEMPLATE, ".explosion", ".character-card", condition))
+    playExplosionSound();
 }
 
 class ExplosionEvent extends FunEvent {
+
+  #preloadedGif;
 
   isActiveForFun(i) {
     return i >= 70 && i <= 79;
@@ -586,12 +612,15 @@ class ExplosionEvent extends FunEvent {
       handler: displayExplosionAnim
     });
 
-    // Preload the image so it will appear quickly the first time it's triggered
-    document.importNode(EXPLOSION_GIF_TEMPLATE.content, true).querySelector(".explosion");
+    // Preload the image and audio so they will appear quickly the first time it's triggered
+    this.#preloadedGif = document.importNode(EXPLOSION_GIF_TEMPLATE.content, true).querySelector(".explosion");
+    preloadAudio("explosion");
   }
 
   onDeactivate() {
     manager.removeCardEvent("explosion");
+    this.#preloadedGif = null;
+    unloadAudio("explosion");
   }
 }
 
