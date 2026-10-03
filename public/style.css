@@ -623,9 +623,6 @@ textarea {
 /* Game scene */
 
 :root {
-  --heart-scale: 3;
-  --heart-width: calc(var(--heart-scale) * 20px);
-
   --card-scale     : 2;
   --your-char-scale: 2;
 
@@ -758,7 +755,7 @@ textarea {
   position : absolute;
   top      : calc(2 * var(--card-base-row-gap) - 0.5 * var(--card-row-height));
   z-index  : 4;
-  animation: 0.125s ease-out 1 grow;
+  animation: 0.125s ease-out 1 inspect-grow;
   cursor   : url('img/sCursorHand.png'), pointer;
   scale    : calc(0.5 * var(--inspect-scale));
 }
@@ -771,7 +768,7 @@ textarea {
   border-color: yellow;
 }
 
-@keyframes grow {
+@keyframes inspect-grow {
   from {
     scale: 0.5;
   }
@@ -783,10 +780,10 @@ textarea {
 
 .character-card.inspect-fading .inspect-img-frame {
   scale    : 50%;
-  animation: 0.125s ease-in 1 shrink;
+  animation: 0.125s ease-in 1 inspect-shrink;
 }
 
-@keyframes shrink {
+@keyframes inspect-shrink {
   from {
     scale: calc(var(--inspect-scale)*50%);
   }
@@ -835,16 +832,25 @@ textarea {
 }
 
 .guess-icon {
-  display: inline-block;
+  --heart-scale    : 3;
+  --heart-width    : calc(var(--heart-scale) * 20px);
+  --heart-border   : 2px;
+  --heart-fade-time: 0.25s;
+
+  position       : relative;
+  display        : flex;
+  align-items    : center;
+  justify-content: center;
+  width          : calc(2 * var(--heart-border) + var(--heart-width));
 }
 
 .guess-icon:not(:focus-visible) {
-  padding: 2px;
+  padding: var(--heart-border);
 }
 
 .guess-icon:focus-visible {
   outline: none;
-  border : 2px solid yellow;
+  border : var(--heart-border) solid yellow;
 }
 
 .guess-icon:hover {
@@ -855,16 +861,56 @@ textarea {
   width: var(--heart-width);
 }
 
-.guess-icon.active .inactive-icon {
+.guess-icon .inactive-icon {
+  position: absolute;
+  z-index : -1;
+}
+
+.guess-icon.inactive .active-icon,
+.guess-icon.fading .active-icon {
   display: none;
 }
 
-.guess-icon.inactive .active-icon {
+.guess-icon .fading-icon {
   display: none;
 }
 
-.guess-icon:has(>.trombone) {
-  position: relative;
+.guess-icon.fading .fading-icon {
+  display : block;
+  position: absolute;
+  opacity : 0%;
+}
+
+.guess-icon.fading .fading-icon.left {
+  animation: var(--heart-fade-time) ease-out 1 guess-fade-left;
+}
+
+.guess-icon.fading .fading-icon.right {
+  animation: var(--heart-fade-time) ease-out 1 guess-fade-right;
+}
+
+@keyframes guess-fade-left {
+  from {
+    opacity: 100%;
+    left   : 0px;
+  }
+
+  to {
+    opacity: 0%;
+    left   : calc(-0.125 * var(--heart-width));
+  }
+}
+
+@keyframes guess-fade-right {
+  from {
+    opacity: 100%;
+    left   : 0px;
+  }
+
+  to {
+    opacity: 0%;
+    left   : calc(0.125 * var(--heart-width));
+  }
 }
 
 .anim-spritesheet {
@@ -949,12 +995,26 @@ textarea {
 }
 
 .character-card {
+  --active-brightness: 1;
+  --active-saturate  : 1;
+
+  --inactive-brightness-base: 0.1;
+  --hover-brightness-shift  : 0.2;
+  --goner-brightness-shift  : 0.2;
+  --inactive-saturate       : 0;
+
+  --inactive-brightness: var(--inactive-brightness-base);
+
+  --flip-time: 0.25s;
+
   position       : relative;
   width          : var(--card-column-width);
   height         : var(--card-row-height);
   display        : flex;
   justify-content: center;
   align-items    : center;
+
+  cursor: url('img/sCursorHand.png'), pointer;
 }
 
 .character-name-popup {
@@ -1112,23 +1172,67 @@ textarea {
 }
 
 .inactive .character-img-frame {
-  filter: brightness(0.1) saturate(0);
+  filter: brightness(var(--inactive-brightness)) saturate(var(--inactive-saturate));
 }
 
 .inactive.goner .character-img-frame {
-  filter: brightness(0.3) saturate(0);
+  --inactive-brightness: calc(var(--inactive-brightness-base) + var(--goner-brightness-shift));
 }
 
-.inactive .character-img-frame:hover,
-.inactive .character-img-frame:focus-visible,
-.inactive .character-name-popup {
-  filter: brightness(0.3);
+.active.flipping .character-img-frame {
+  animation: flip var(--flip-time) linear 1, flip-off var(--flip-time) steps(2, jump-none) 1;
 }
 
-.inactive.goner .character-img-frame:hover,
-.inactive.goner .character-img-frame:focus-visible,
-.inactive.goner .character-name-popup {
-  filter: brightness(0.5) saturate(0);
+.inactive.flipping .character-img-frame {
+  animation: flip var(--flip-time) linear 1, flip-on var(--flip-time) steps(2, jump-none) 1;
+}
+
+@keyframes flip {
+  0% {
+    scale: 1 1;
+  }
+
+  50% {
+    scale: 0 1;
+  }
+
+  100% {
+    scale: 1 1;
+  }
+}
+
+@keyframes flip-on {
+  0% {
+    filter: brightness(var(--inactive-brightness)) saturate(var(--inactive-saturate));
+  }
+
+  100% {
+    filter: brightness(var(--active-brightness)) saturate(var(--active-saturate));
+  }
+}
+
+@keyframes flip-off {
+  0% {
+    filter: brightness(var(--active-brightness)) saturate(var(--active-saturate));
+  }
+
+  100% {
+    filter: brightness(var(--inactive-brightness)) saturate(var(--inactive-saturate));
+  }
+}
+
+.character-card:hover .character-img-frame,
+.character-card .character-img-frame:focus-visible,
+.character-card .character-name-popup {
+  --inactive-brightness: calc(var(--inactive-brightness-base) + var(--hover-brightness-shift));
+  --inactive-saturate  : 1;
+}
+
+.character-card.goner:hover .character-img-frame,
+.character-card.goner .character-img-frame:focus-visible,
+.character-card.goner .character-name-popup {
+  --inactive-brightness: calc(var(--inactive-brightness-base) + var(--goner-brightness-shift) + var(--hover-brightness-shift));
+  --inactive-saturate  : 0;
 }
 
 .inactive.goner .character-name::before {

@@ -543,13 +543,16 @@ async function displayTromboneAnim(e) {
   // Tiny delay before starting to ensure the event to toggle the heart state always goes first
   await new Promise((resolve) => { setTimeout(resolve, 1) });
 
-  const condition = (el) => el.closest(".guess-icon").classList.contains("inactive");
+  const condition = (el) => {
+    const cl = el.closest(".guess-icon").classList;
+    return cl.contains("inactive") || cl.contains("fading");
+  };
 
   if (displayAnim(e, 1, TROMBONE_GIF_TEMPLATE, ".trombone", ".guess-icon", condition))
     playTromboneSound();
 }
 
-export let suppressDamageSound = false;
+export let suppressGuessFadeSound = false;
 
 class TromboneEvent extends FunEvent {
 
@@ -569,14 +572,14 @@ class TromboneEvent extends FunEvent {
     // Preload the image and audio so they will appear quickly the first time it's triggered
     this.#preloadedGif = document.importNode(TROMBONE_GIF_TEMPLATE.content, true).querySelector(".trombone");
     preloadAudio("trombone");
-    suppressDamageSound = true;
+    suppressGuessFadeSound = true;
   }
 
   onDeactivate() {
     manager.removeHeartEvent("trombone");
     this.#preloadedGif = null;
     unloadAudio("trombone");
-    suppressDamageSound = false;
+    suppressGuessFadeSound = false;
   }
 }
 
@@ -591,7 +594,10 @@ async function displayExplosionAnim(e) {
   // Tiny delay before starting to ensure the event to toggle the card state always goes first
   await new Promise((resolve) => { setTimeout(resolve, 1) });
 
-  const condition = (el) => el.closest(".character-card").classList.contains("inactive");
+  const condition = (el) => {
+    const cl = el.closest(".character-card").classList;
+    return cl.contains("active") && cl.contains("flipping");
+  };
 
   if (displayAnim(e, 0.1, EXPLOSION_GIF_TEMPLATE, ".explosion", ".character-card", condition))
     playExplosionSound();
@@ -632,10 +638,12 @@ function setGonerClass(e) {
 }
 
 function setGonerClassForCard(el) {
-  if (el.classList.contains("inactive"))
-    el.classList.add("goner");
+  const cl = el.classList;
+  if ((cl.contains("active") && cl.contains("flipping")) ||
+    (cl.contains("inactive") && !cl.contains("flipping")))
+    cl.add("goner");
   else
-    el.classList.remove("goner");
+    cl.remove("goner");
 
 }
 

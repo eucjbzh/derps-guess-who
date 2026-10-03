@@ -2,7 +2,7 @@
 // =================
 
 import { audioEnabled, playDamageSound, playMoveMenuSound, playSelectSound, preloadStandardAudio } from "./audio.js";
-import { connectFunButton, setNewFunValue, updateNoFun, attachAllHeartEvents, attachAllCardEvents, suppressDamageSound } from "./fun.js";
+import { connectFunButton, setNewFunValue, updateNoFun, attachAllHeartEvents, attachAllCardEvents, suppressGuessFadeSound } from "./fun.js";
 
 // Class definitions
 // -----------------
@@ -1196,6 +1196,8 @@ function startLookupMode(e) {
  */
 function lookupTarget(e) {
 
+  playSelectSound();
+
   // First, figure out what to look up. Check the Your Character frame, as well as all character cards. What feature we
   // check for depends on which lookup mode we're in
   let lookupFeature;
@@ -1523,14 +1525,17 @@ async function loadCharacterSet(setDirName, preload = false) {
     inspectImgEl.setAttribute("src", loadingCharsetPath + "/" + charInfo.imgName);
 
     // Set up events for the card
-    const frameEl = newCard.querySelector(".character-img-frame");
-    frameEl.addEventListener("click", flipCard);
-    frameEl.addEventListener("dblclick", markCard);
-    frameEl.addEventListener("mousedown", (e) => {
+    newCard.addEventListener("click", flipCard);
+    newCard.addEventListener("dblclick", markCard);
+    newCard.addEventListener("mousedown", (e) => {
       if (e.button == 1 || e.buttons == 4)
         toggleInspectCard(e);
     });
-    frameEl.addEventListener("contextmenu", markCard, false);
+    newCard.addEventListener("contextmenu", markCard, false);
+
+    // Set the wheel event specifically off of the card frame so it doesn't interfere with the
+    // wheel event on the inspect frame
+    const frameEl = newCard.querySelector(".character-img-frame");
     frameEl.addEventListener("wheel", (e) => {
       if (e.deltaY < 0) {
         e.preventDefault();
@@ -1574,20 +1579,29 @@ async function loadCharacterSet(setDirName, preload = false) {
  * @param {Event} e 
  */
 function flipGuess(e) {
-  const guessClassList = e.currentTarget.closest(".guess-icon").classList;
+  const guessIcon = e.currentTarget.closest(".guess-icon");
+  const guessClassList = guessIcon.classList;
+
+  // Don't do anything while it's fading
+  if (guessClassList.contains("fading"))
+    return;
 
   if (guessClassList.contains("active")) {
-    if (!suppressDamageSound)
+    if (!suppressGuessFadeSound) {
       playDamageSound();
-    guessClassList.remove("active");
-    guessClassList.add("inactive");
+    }
+    let fadeTime = 1000 * parseFloat(window.getComputedStyle(guessIcon).getPropertyValue("--heart-fade-time"));
+    guessClassList.add("fading");
+    setTimeout(() => {
+      guessClassList.add("inactive");
+      guessClassList.remove("active");
+      guessClassList.remove("fading");
+    }, fadeTime);
   } else {
     playSelectSound();
     guessClassList.add("active");
     guessClassList.remove("inactive");
   }
-
-  updateNumChars();
 }
 
 /**
@@ -1596,8 +1610,6 @@ function flipGuess(e) {
  */
 function flipCard(e) {
 
-  playSelectSound();
-
   // Don't flip if we're in lookup mode
   if (lookupModeEnabled())
     return;
@@ -1605,17 +1617,45 @@ function flipCard(e) {
   let frameEl;
   if (!(frameEl = e.currentTarget || e.target))
     frameEl = e;
-  const cardClassList = frameEl.closest(".character-card").classList;
+  const card = frameEl.closest(".character-card");
+  const cardClassList = card.classList;
 
-  if (cardClassList.contains("active")) {
-    cardClassList.remove("active");
-    cardClassList.add("inactive");
-  } else {
-    cardClassList.add("active");
-    cardClassList.remove("inactive");
+  // If the card is already in the middle of flipping, queue a flip
+  if (cardClassList.contains("flipping")) {
+    cardClassList.add("flip-queued");
+    return;
   }
 
-  updateNumChars();
+  playSelectSound();
+  const flipTime = 1000 * parseFloat(window.getComputedStyle(card).getPropertyValue("--flip-time"));
+
+  // Define a function of tasks to run when a flip ends in either direction
+  const endFlip = () => {
+    cardClassList.remove("flipping");
+    // If a flip was queued while this card was flipping, flip it again
+    if (cardClassList.contains("flip-queued")) {
+      cardClassList.remove("flip-queued");
+      flipCard(e);
+    } else {
+      updateNumChars();
+    }
+  }
+
+  if (cardClassList.contains("active")) {
+    cardClassList.add("flipping");
+    setTimeout(() => {
+      cardClassList.add("inactive");
+      cardClassList.remove("active");
+      endFlip();
+    }, flipTime);
+  } else {
+    cardClassList.add("flipping");
+    setTimeout(() => {
+      cardClassList.add("active");
+      cardClassList.remove("inactive");
+      endFlip();
+    }, flipTime);
+  }
 }
 
 /**
